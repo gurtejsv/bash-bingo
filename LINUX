@@ -1,0 +1,217 @@
+#!/bin/bash
+
+FILE="$1"
+seed=$(head -n 1 $FILE)
+declare -A card
+call_list=()
+call=-1
+re='^[0-9]+$'
+
+#check file name
+if ! [ -f "$FILE" ]
+then
+    echo "input file missing or unreadable" >/dev/stderr
+    exit 1
+fi
+
+#check file lines
+count=0
+while read line
+do
+    count=$(($count + 1))
+done < "$FILE"
+if [ $count -ne 6 ]
+then
+    echo "input file must have 6 lines" >/dev/stderr
+    exit 2
+fi
+
+#check seed format
+if [[ $(IFS=' '; set -f -- $seed; echo $#) -ne 1 ]]
+then
+    echo "seed line format error" >/dev/stderr
+    exit 3
+elif ! [[ $seed =~ $re ]]
+then
+    echo "seed line format error" >/dev/stderr
+    exit 3
+else
+    RANDOM=$seed;
+fi
+
+#read file
+i=0
+while read -ra line
+do
+    j=0
+    for value in "${line[@]}"
+    do
+        if ! [[ $value =~ $re ]]
+        then
+            echo "card format error" >/dev/stderr
+            exit 4
+        else
+            card[$i,$j]=$value
+        fi
+        j=$(($j + 1))
+    done
+    if ! [ $j -eq 5 ]
+    then
+        echo "card format error" >/dev/stderr
+        exit 4
+    fi
+    i=$(($i + 1))
+done < <(sed 1d $FILE)
+if ! [ $i -eq 5 ]
+then
+    echo "card format error" >/dev/stderr
+    exit 4
+fi
+
+#check card format
+for ((j=0;j<=4;j++)) do
+    for ((i=0;i<=4;i++)) do
+        if [ ${card[$i,$j]} -lt $(( $j * 15 + 1 )) ] || [ ${card[$i,$j]} -gt $(( $j * 15 + 15 )) ]
+        then
+            if [ $i -ne 2 ] || [ $j -ne 2 ] || [ ${card[$i,$j]} -ne 0 ]
+            then
+                echo "card format error" >/dev/stderr
+                exit 4
+            fi
+        fi
+        for ((k=i+1;k<=4;k++)) do
+            if [ ${card[$i,$j]} -eq ${card[$k,$j]} ]
+            then
+                echo "card format error" >/dev/stderr
+                exit 4
+            fi
+        done
+    done
+done
+
+print_call_list () {
+    echo -n "CALL LIST: "
+    for value in "${call_list[@]}"
+    do
+        prefix=""
+        if [ "$value" -gt 60 ]
+        then
+            prefix="X"
+        elif [ "$value" -gt 45 ]
+        then
+            prefix="U"
+        elif [ "$value" -gt 30 ]
+        then
+            prefix="N"
+        elif [ "$value" -gt 15 ]
+        then
+            prefix="I"
+        elif [ "$value" -gt 0 ]
+        then
+            prefix="L"
+        fi
+        echo -n "$prefix$(printf %02d $value) "
+    done
+    echo
+}
+
+print_card () {
+    printf " %-4s%-4s%-4s%-4s%-4s\n" "L" "I" "N" "U" "X"
+    for ((i=0;i<=4;i++)) do
+        for ((j=0;j<=4;j++)) do
+            printf "%-4s" "${card[$i,$j]}"
+        done
+        echo
+    done
+}
+
+check_win () {
+    for ((i=0;i<=4;i++)) do
+        count=0
+        for ((j=0;j<=4;j++)) do
+            if [[ ${card[$i,$j]} == *"m"* ]] || [ ${card[$i,$j]} -eq 0 ]
+            then
+                count=$(($count + 1))
+            fi
+        done
+        if [[ $count -eq 5 ]]
+        then
+            echo "WINNER"
+            exit 0
+        fi
+    done
+    for ((j=0;j<=4;j++)) do
+        count=0
+        for ((i=0;i<=4;i++)) do
+            if [[ ${card[$i,$j]} == *"m"* ]] || [ ${card[$i,$j]} -eq 0 ]
+            then
+                count=$(($count + 1))
+            fi
+        done
+        if [[ $count -eq 5 ]]
+        then
+            echo "WINNER"
+            exit 0
+        fi
+    done
+    if [[ ${card[0,0]} == *"m"* ]] && [[ ${card[0,4]} == *"m"* ]] && [[ ${card[4,0]} == *"m"* ]] && [[ ${card[4,4]} == *"m"* ]]
+    then
+        echo "WINNER"
+        exit 0
+    fi
+}
+
+play_again () {
+    echo -n "enter any key to get a call or q to quit: "
+    read input
+    if [ "$input" == 'q' ]
+    then
+        exit 0
+    fi
+}
+
+next_call () {
+    while true
+    do
+        call=$((1 + $RANDOM % 75))
+        found=false
+        for value in "${call_list[@]}"
+        do
+            if [ $value -eq $call ]
+            then
+                found=true
+            fi
+        done
+        if [ "$found" = false ]
+        then
+            call_list+=("$call")
+            break
+        fi
+    done
+}
+
+draw () {
+    for ((i=0;i<=4;i++)) do
+        for ((j=0;j<=4;j++)) do
+            if  [[ ${card[$i,$j]} =~ $re ]] && [ ${card[$i,$j]} -eq $call ]
+            then
+                card[$i,$j]="${card[$i,$j]}m"
+            fi
+        done
+    done
+}
+
+game () {
+    while true
+    do
+        clear
+        print_call_list
+        print_card
+        check_win
+        play_again
+        next_call
+        draw
+    done
+}
+
+game
